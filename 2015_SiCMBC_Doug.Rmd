@@ -56,7 +56,9 @@ community_t <- community_t[-1, ]
 community_t <- sapply(community_t, function(x) as.numeric(as.character(x))) # sapply applies a function to each column, and the function is:  function(x) as.numeric(as.character(x)).  Cannot convert factors to numeric directly. first convert to character, then to numeric
 community_t <- as.data.frame(community_t) # then convert to df
 colSums(community_t) # some colSums = 0 because these are the positive control OTUs
+```
 
+```{r remove pos ctrl OTUs}
 community_t <- community_t[ ,which(colSums(community_t) > 0)]
 colSums(community_t)
 rowSums(community_t)
@@ -104,9 +106,8 @@ tabasco(community_now, plotree)
 
 ```{r nmds}
 # do NMDS analysis to see basic patterns #
-
-community.jmds <- metaMDS(community_now, distance = "Jaccard", trymax = 40, binary = FALSE)
-community.jmds <- metaMDS(community_now, distance = "Jaccard", binary = FALSE, previous.best = community.jmds)
+community.jmds <- metaMDS(community_now, distance = "jaccard", trymax = 40, binary = FALSE)
+community.jmds <- metaMDS(community_now, distance = "jaccard", binary = FALSE, previous.best = community.jmds)
 
 stressplot(community.jmds)
 ```
@@ -137,7 +138,7 @@ ordipointlabel(community.jmds, dis="sites")
 p1 <- plot(community.jmds, dis="sites")
 identify(p1, "sites") # interactive method to identify sites by row number. Click on the points that you want to identify. When you have clicked on all the points, click on the Finish button at top right of Plot window. 
 ```
-\
+
 
 
 ```{r boral, eval=FALSE}
@@ -153,36 +154,6 @@ par(mfrow = c(1,1))
 lvsplot(comm.fit.p3, biplot = FALSE, jitter = TRUE)
 
 ```
-
-
-Across the various taxonomic subsets, sites 2 (BB02) and 38 (JC04) remain compositional outliers. In the community_insecta_nosngltons dataset, there are only 3 OTUs in site 2 and 1 OTU in site 38. There are other sites with low numbers of species (e.g. 27 & 28), but they are not compositional outliers. So we should remove these sites from the community and habitat datasets, starting right at the beginning of the analysis. 
-
-In the "histogram of otu read numbers" I try removing OTUs with different minimum numbers of reads. I find no obvious difference if i remove only OTUs with 1 total read (commNosr.002) or OTUs with < 100 total reads (commNosr.100). So for now, I stick with removing all *singleton* OTUs (OTUs that appear in only one sample, regardless of number of reads in that OTU).
-
-# To do
-1. filter out low-read OTUs
-2. alpha diversity
-3. boral
-4. mvabund
-5. breakaway
-6. rarefaction (chao, inext) # sample-based rarefaction
-
-# Questions
-1. Is MF "better" than individual forests (JC, EC, BB)?
-2. Define "better":  
-	+ More total species diversity/richness (sample-based rarefaction)
-3. Can we predict composition with Landsat?
-4. Do this with Kat's dataset too.
-5. mvabund/boral
-
-Journal of Applied Ecology
-
-Thesis
-1. Nat Comms
-2. Laboratory Methods
-3. GfGmb
-4. bee mitogenomes
-5. Sichuan farmland
 
 
 
@@ -257,7 +228,7 @@ t.test2 <- function(m1, m2, s1, s2, n1, n2, m0=0, equal.variance=FALSE)
 # IMPORTANT:  Don't use OTU tables with singleton OTUs removed, because singleton OTUs are needed for chao stats
 
 # using community_insecta
-pool1 <- specpool(community_diptera, habitat_diptera$Habitat) %>% rownames_to_column("Habitat")
+pool1 <- specpool(community_now)
 pool1
 
 # chao, MF vs NF
