@@ -6,6 +6,18 @@ output: html_document
 Comparing two dataframes in R
 http://stackoverflow.com/questions/30655456/comparing-data-frames-in-r/30655765
 
+Set up github remote on github.com/dougwyu/Sichuan2014
+https://www.r-bloggers.com/rstudio-and-github/
+Open Terminal
+```{bash}
+git remote add origin https://github.com/dougwyu/Sichuan2014.git
+git config remote.origin.url git@github.com:dougwyu/Sichuan2014.git
+git pull -u origin master
+git push -u origin master
+```
+Pull and Push buttons are now active
+
+
 ```{r setup, test methods}
 # 2libs_otu_WithTax4R_orig.txt is original file with all taxonomic assignments. Some of the OTUs still have non-Arthropoda in them, so need to go back and make taxonomic subsets. I added "Site" to top of first column and fixed misspelling of kindom to kingdom
 ##### make sure that Source option is set to `Chunk output in Console` and do not select `Show Previews inline`
@@ -30,14 +42,17 @@ habitatinput <- "habitat.txt"
 
 gfgMB <- read_tsv(inputfile, col_names = TRUE, na = "NA")
 gfgMB <- tbl_df(gfgMB)
-habitat <- read_tsv(habitatinput, col_names = TRUE, na = "NA")
-	# cols(
-	#   PlotID = col_character(),
-	#   Region = col_character(),
-	#   Location = col_character(),
-	#   TreeCover = col_integer(),
-	#   Clumpedness = col_integer()
-	# )
+
+habitat <- read_tsv(
+	habitatinput, col_names = TRUE, na = "NA", 
+	col_types = cols(
+	  PlotID = col_character(),
+	  Region = col_character(),
+	  Location = col_character(),
+	  TreeCover = col_integer(),
+	  Clumpedness = col_integer()
+		)
+)
 ```
 
 ```{r community dataset}
@@ -68,7 +83,7 @@ rowSums(community_t)
 ```{r choose commmunity to analyse}
 community_name <- deparse(substitute(community_t)) # put name of community here
 
-habitat_now <- habitat # habitat goes with community_insecta, habitat_diptera goes with community_diptera
+habitat_now <- habitat # 
 
 community_now <- get(community_name)
 ```
@@ -585,13 +600,13 @@ estaccumR(commNosrB)
 #mcmc.control <- list(n.burnin = 100, n.iteration = 1000, n.thin = 10)
 mcmc.control <- list(n.burnin = 300, n.iteration = 3000, n.thin = 30)
 colnames(commNosrB) <- c(1:520)
-comm.fit.p3 <- boral(commNosrB, family = "poisson", num.lv = 3, row.eff = "fixed", calc.ics = FALSE, mcmc.control = mcmc.control)
+comm.fit.p2 <- boral(commNosrB, family = "poisson", num.lv = 2, row.eff = "fixed", calc.ics = FALSE, mcmc.control = mcmc.control)
 summary(comm.fit.p3)
 par(mfrow = c(2,2))
 plot(comm.fit.p3) ## Plots used in residual analysis, 
 #dev.off()
 par(mfrow = c(1,1))
-lvsplot(comm.fit.p3, biplot = FALSE, jitter = TRUE)
+lvsplot(comm.fit.p2, biplot = FALSE, jitter = TRUE)
 
 
 ```
