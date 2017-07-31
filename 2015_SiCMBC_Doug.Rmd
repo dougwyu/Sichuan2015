@@ -8,14 +8,15 @@ http://stackoverflow.com/questions/30655456/comparing-data-frames-in-r/30655765
 
 Set up github remote on github.com/dougwyu/Sichuan2014
 https://www.r-bloggers.com/rstudio-and-github/
-Open Terminal using Tools...Shell..
+Following instructions assume that i've set up ssh RSA key access to github already.
+Open Terminal using Tools -> Shell..
 ```{bash}
 git remote add origin https://github.com/dougwyu/Sichuan2015.git
 git config remote.origin.url git@github.com:dougwyu/Sichuan2015.git
 git pull -u origin master
 git push -u origin master
 ```
-Pull and Push buttons are now active
+Click on Git tab.  Pull and Push buttons should now be active. If problems, try restarting RStudio.
 
 
 ```{r setup, test methods}
