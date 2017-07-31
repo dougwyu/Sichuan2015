@@ -38,7 +38,7 @@ library(mvabund)
 # help(read_tsv)
 # this inputfile contains taxononomic assignments in the lower rows
 # command from readr package, and you tell the command how to format the columns
-inputfile <- "table_LerayCOI_96.txt"
+inputfile <- "Sichuan2015_OTU_LerayCOI_DAMe_min1PCR_min20copies_sumaclust97.txt"
 habitatinput <- "habitat.txt"
 
 gfgMB <- read_tsv(inputfile, col_names = TRUE, na = "NA")
@@ -75,7 +75,7 @@ colSums(community_t) # some colSums = 0 because these are the positive control O
 ```
 
 ```{r remove pos ctrl OTUs}
-community_t <- community_t[ ,which(colSums(community_t) > 0)]
+community_t <- community_t[ , which(colSums(community_t) > 0)]
 colSums(community_t)
 rowSums(community_t)
 ```
