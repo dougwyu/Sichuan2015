@@ -1,51 +1,34 @@
 ---
-title: "2015Sichuan-MBC"
+title: "2015_Sichuan_MBC"
 output: html_document
 ---
 
-Comparing two dataframes in R
-http://stackoverflow.com/questions/30655456/comparing-data-frames-in-r/30655765
-
-Set up github remote on github.com/dougwyu/Sichuan2014
-https://www.r-bloggers.com/rstudio-and-github/
-Following instructions assume that i've set up ssh RSA key access to github already.
-Open Terminal using Tools -> Shell..
-```{bash}
-git remote add origin https://github.com/dougwyu/Sichuan2015.git
-git config remote.origin.url git@github.com:dougwyu/Sichuan2015.git
-git pull -u origin master
-git push -u origin master
-```
-Click on Git tab.  Pull and Push buttons should now be active. If problems, try restarting RStudio.
-
-
 ```{r setup, test methods}
-# 2libs_otu_WithTax4R_orig.txt is original file with all taxonomic assignments. Some of the OTUs still have non-Arthropoda in them, so need to go back and make taxonomic subsets. I added "Site" to top of first column and fixed misspelling of kindom to kingdom
 ##### make sure that Source option is set to `Chunk output in Console` and do not select `Show Previews inline`
-# before import to R, delete first line and "#OTU ID" in the second line by hand. change names of habitats type: Ag->CL, B->BB, E->EC, C->JC, M->MF. add habitats type to original table. separate taxon info by "\t"
 
 # add packages that I will use
 library(tidyverse) # includes all data-formatting packages as one big package (e.g. dplyr, tidyr, ggplot2, readr, readxl, tibble, and others)
-library(broom)
+# library(broom)
 library(vegan)
-library(car)
-library(breakaway)
+library(iNEXT)
+# library(car)
+# library(breakaway)
 library(boral)
 library(mvabund)
+sessionInfo()
 ```
 
 ```{r load and format data}
-# help(read_tsv)
-# this inputfile contains taxononomic assignments in the lower rows
-# command from readr package, and you tell the command how to format the columns
 inputfile <- "Sichuan2015_OTU_LerayCOI_DAMe_min1PCR_min20copies_sumaclust97.txt"
 habitatinput <- "habitat.txt"
 
-gfgMB <- read_tsv(inputfile, col_names = TRUE, na = "NA")
-gfgMB <- tbl_df(gfgMB)
+# help(read_tsv)
+# command from readr package, and you tell the command how to format the columns
+gfgMB <- read_tsv(inputfile, col_names = TRUE, na = "NA") %>% tbl_df() # convert to tibble format
+# gfgMB is a convenient variable name that stands for Grain for Green MetaBarcoding
 
-habitat <- read_tsv(
-	habitatinput, col_names = TRUE, na = "NA", 
+habitat <- read_tsv(habitatinput, 
+	col_names = TRUE, na = "NA", 
 	col_types = cols(
 	  PlotID = col_character(),
 	  Region = col_character(),
@@ -53,51 +36,62 @@ habitat <- read_tsv(
 	  TreeCover = col_integer(),
 	  Clumpedness = col_integer()
 		)
-)
+	)
 ```
 
 ```{r community dataset}
-# make community dataset
+# make community dataset:  Columns are species (OTUs) and rows are samples (sites). This requires transposing the dataset and then doing a bunch of formatting to restore column names and formatting
 community <- gfgMB
-community <- community %>% select(-pos) # remove positive control
 community_t <- t(community)
 community_t <- as.data.frame(community_t)
-colvector <- t(community[, 1])
+colvector <- t(community[, 1]) # all rows, column 1
 colnames(community_t) <- colvector # add column names
-community_t <- community_t[-1, ]
+community_t <- community_t[-1, ] # remove row 1
 # community_t <- rownames_to_column(community_t)
 
 # convert the columns to numeric from factor
 # http://stackoverflow.com/questions/2288485/how-to-convert-a-data-frame-column-to-numeric-type
 community_t <- sapply(community_t, function(x) as.numeric(as.character(x))) # sapply applies a function to each column, and the function is:  function(x) as.numeric(as.character(x)).  Cannot convert factors to numeric directly. first convert to character, then to numeric
 community_t <- as.data.frame(community_t) # then convert to df
-colSums(community_t) # some colSums = 0 because these are the positive control OTUs
 ```
 
 ```{r remove pos ctrl OTUs}
-community_t <- community_t[ , which(colSums(community_t) > 0)]
-colSums(community_t)
-rowSums(community_t)
+colSums(community_t) # some colSums = 0 because these were OTUS from the positive control samples (and thus not species that exist in the real samples)
+
+community_t <- community_t[ , which(colSums(community_t) > 0)] # omit OTUs that have no reads
+colSums(community_t) # all OTUs have some reads
+rowSums(community_t) # all sites have some OTUs
 ```
 
 
 ```{r choose commmunity to analyse}
+
+# this is code that i can use to change the name of the community dataset and the habitat dataset, allowing me to write more general code below. in this case, just run these lines, and the community and habitat datasets will be referred to as comunity_now and habitat_now
+
 community_name <- deparse(substitute(community_t)) # put name of community here
-
-habitat_now <- habitat # 
-
+habitat_now <- habitat # change this if i want to change which habitat dataset i'm working with
 community_now <- get(community_name)
 ```
 
-```{r no_singletons}
+```{r save datasets for later alpha diversity analyses}
+community_sngltons <-  community_now
+habitat_sngltons <- habitat_now
+```
+
+
+
+# Beta diversity analyses:  does arthropod community composition differ?  The answer is yes, but we don't know why yet.
+```{r remove singleton OTUs for beta diversity analyses}
+# omit OTUs that appear in only one row (site)
 community_now_nosngltons <- community_now %>% select_if(specnumber(community_now, MARGIN = 2) > 1) # remove singleton OTUs (found in only one site) specnumber(MARGIN = 2) counts the number of sites that have a particular OTU. (same as colSums > 2)
-rowSums(community_now_nosngltons) #  rowSums = 0 in row 53
+rowSums(community_now_nosngltons) 
 # remove any rows (sites) with no species
 	# first use the community table to alter the habitat table
 habitat_now_nosngltons <- habitat_now[which(rowSums(community_now_nosngltons) > 0), ]
 	# then alter the community tables
 community_now_nosngltons <- community_now_nosngltons[which(rowSums(community_now_nosngltons) >0), ]
 rowSums(community_now_nosngltons)
+community_now <- community_now_nosngltons
 ```
 
 visualise a histogram of read number per OTU
@@ -114,11 +108,14 @@ text(otuhist$mids, otuhist$counts, cex = 0.5, otuhist$counts, adj = c(.5, -.5), 
 ```{r}
 # vegemite(community_now)
 dca <- decorana(community_now)
-vegemite(community_now, dca, "Hill")
+# vegemite(community_now, dca, "Hill")
 
 plotree <- hclust(vegdist(community_now), "average")
 tabasco(community_now, plotree)
+
+# clear turnover of species across sites.  our question is what causes this turnover
 ```
+
 
 ```{r nmds}
 # do NMDS analysis to see basic patterns #
@@ -129,22 +126,27 @@ stressplot(community.jmds)
 ```
 
 ```{r plot nmds}
-#### plot the communities
+#### plot the communities.  Basically, there's no useful environmental predictor in this habitat file (tree clumpedness and tree cover). the hope is that the new environmental predictors will provide more explanatory power
+#### 
+
+# What we are looking for here is for large circles to be in one region of the figure and small circles in another. The circle sizes are related various ways of measuring the environmental variables:  Clumpedness and TreeCover.  In other words, we want to see if insect communities in high Clumpedness/TreeCover sites are different (in different parts of the NMDS) from low Clumpedness/TreeCover sites
+
 (sprichness <- specnumber(community_now, MARGIN = 1)) # number of species per site
 
 with(habitat_now, ordisurf(community.jmds, sprichness, main=community_name, cex=Clumpedness*TreeCover/20))
 
 with(habitat_now, ordisurf(community.jmds, TreeCover, main=community_name, cex=TreeCover/5))
 
-with(habitat_now, ordisurf(community.jmds, Clumpedness, main=community_name, cex=0.5))
+with(habitat_now, ordisurf(community.jmds, Clumpedness, main=community_name, cex=Clumpedness))
 
 with(habitat_now, ordispider(community.jmds, Region, main=community_name, cex=0.5))
 
 with(habitat_now, ordiellipse(community.jmds, Region, cex=.5, draw="polygon", col=c("blue"), alpha=20, kind="se", conf=0.95, label=TRUE))
-# with(habitat_now, ordisurf(community.jmds, Altitude, main="", cex=0.5))
 
 ```
 
+
+# these are optional commands to allow individual identification of points
 ```{r ordiplots, eval = FALSE}
 # These commands are ways to identify points
 orditorp(community.jmds, labels = habitat_now$Site, dis="sites", pcol = "gray")
@@ -157,67 +159,10 @@ identify(p1, "sites") # interactive method to identify sites by row number. Clic
 
 
 
-```{r boral, eval=FALSE}
-#mcmc.control <- list(n.burnin = 100, n.iteration = 1000, n.thin = 10)
-mcmc.control <- list(n.burnin = 300, n.iteration = 3000, n.thin = 30)
-colnames(community_now) <- c(1:645) # change colnames to a simple number
-community_now[community_now > 1] <-  1 # change to presence/absence
-comm.fit.p3 <- boral(community_now, family = "poisson", num.lv = 3, row.eff = "fixed", calc.ics = FALSE, mcmc.control = mcmc.control)
-summary(comm.fit.p3)
-par(mfrow = c(2,2))
-plot(comm.fit.p3) ## Plots used in residual analysis, 
-par(mfrow = c(1,1))
-lvsplot(comm.fit.p3, biplot = FALSE, jitter = TRUE)
+#### Alpha diversity:  does arthropod species diversity or richness across sites?  The answer is yes, but we don't know why yet.
 
-```
+We use the habitat_sngltons and community_sngltons datasets because alpha diversity analyses require knowing the species that occur in only one sample.  The intuition is that many of the species that you collect are only collected once (singletons), then you probably have a highly diverse species pool out there. 
 
-
-
-``` {r}
-
-# otureads200max <- otureads[otureads>1] # remove otus with 1 read  # has no effect if I have removed singleton reads already
-otureads[otureads>100] <- 100 # replace large read numbers with 100, to make the histogram readable
-hist(otureads)  # bimodal distribution of read numbers. Now, what should be the cutoff point? 
-
-commNosr.100 <- community_now[ ,colSums(community_now)>=100] ## remain 346 otus, community without Non-single reads otu
-commNosr.080 <- community_now[,colSums(community_now)>=80]
-commNosr.070 <- community_now[,colSums(community_now)>=70]
-commNosr.060 <- community_now[,colSums(community_now)>=60]
-commNosr.050 <- community_now[,colSums(community_now)>=50]  
-commNosr.030 <- community_now[,colSums(community_now)>=30]
-commNosr.020 <- community_now[,colSums(community_now)>=20] 
-commNosr.010 <- community_now[,colSums(community_now)>=10]
-commNosr.002 <- community_now[,colSums(community_now)>=2] # this removes single-read OTUs (an OTU's number of reads is its colSum)
-
-commNosr <- commNosr.100
-
-commNosr.jmds <- metaMDS(commNosr, distance = "jaccard", trymax = 40)
-commNosr.jmds <- metaMDS(commNosr, distance = "jaccard", previous.best = commNosr.jmds)
-stressplot(commNosr.jmds)
-
-community.jmds <- commNosr.jmds
-
-levels(habitat_now$Habitat)
-with(habitat_now, ordisurf(community.jmds, Altitude, main="", cex=0.5))
-
-with(habitat_now, ordiellipse(community.jmds, Habitat, cex=.5, draw="polygon", col=c("blue"), alpha=20, kind="se", conf=0.95, label=TRUE, show.groups=(c("BB"))))
-# with(habitat_now, ordispider(community.jmds, Habitat, main="", show.groups=(c("BB"))))
-
-with(habitat_now, ordiellipse(community.jmds, Habitat, cex=.5, draw="polygon", col=c("green"), alpha=20, kind="se", conf=0.95, label=TRUE, show.groups=(c("CL"))))
-
-with(habitat_now, ordiellipse(community.jmds, Habitat, cex=.5, draw="polygon", col=c("red"), alpha=20, kind="se", conf=0.95, label=TRUE, show.groups=(c("EC"))))
-
-with(habitat_now, ordiellipse(community.jmds, Habitat, cex=.5, draw="polygon", col=c("blue"), alpha=20, kind="se", conf=0.95, label=TRUE, show.groups=(c("JC"))))
-# with(habitat_now, ordispider(community.jmds, Habitat, main="", show.groups=(c("JC"))))
-
-with(habitat_now, ordiellipse(community.jmds, Habitat, cex=.5, draw="polygon", col=c("darkgreen"), alpha=20, kind="se", conf=0.95, label=TRUE, show.groups=(c("MF"))))
-with(habitat_now, ordispider(community.jmds, Habitat, main="", show.groups=(c("MF"))))
-
-with(habitat_now, ordiellipse(community.jmds, Habitat, cex=.5, draw="polygon", col=c("darkgreen"), alpha=20, kind="se", conf=0.95, label=TRUE, show.groups=(c("NF"))))
-with(habitat_now, ordispider(community.jmds, Habitat, main="", show.groups=(c("NF"))))
-```
-
-http://www.wcsmalaysia.org/analysis/Biod_richness.htm
 ```{r t.test2}
 ############ This function (t.test2) will calculate Welch's test
 t.test2 <- function(m1, m2, s1, s2, n1, n2, m0=0, equal.variance=FALSE)
@@ -240,40 +185,115 @@ t.test2 <- function(m1, m2, s1, s2, n1, n2, m0=0, equal.variance=FALSE)
 }
 ```
 
-```{r specpool}
-# IMPORTANT:  Don't use OTU tables with singleton OTUs removed, because singleton OTUs are needed for chao stats
 
-# using community_insecta
-pool1 <- specpool(community_now)
+
+```{r specpool}
+# IMPORTANT:  Only use OTU tables that still have singleton OTUs, because singleton OTUs are needed for chao stats
+
+pool1 <- specpool(community_sngltons)
 pool1
 
-# chao, MF vs NF
-# t.test2(3513.490, 9671.864, 543.1159*sqrt(9), 981.5702*sqrt(15), 9, 15)
-t.test2(pool1[5, 3], pool1[6, 3], pool1[5, 4]*sqrt(pool1[5, 10]), pool1[6, 4]*sqrt(pool1[6, 10]), pool1[5, 10], pool1[6, 10])
-# jack1, MF vs NF
-# t.test2(1013.4444, 2603.9333, 190.4298*sqrt(9), 477.7467*sqrt(15), 9, 15)
-t.test2(pool1[5, 5], pool1[6, 5], pool1[5, 6]*sqrt(pool1[5, 10]), pool1[6, 6]*sqrt(pool1[6, 10]), pool1[5, 10], pool1[6, 10])
-
-
-# using commNosr.n (OTUs with >= n total reads only)
-pool2 <- specpool(commNosr.010, habitat_now$Habitat) %>% rownames_to_column("Habitat")
+pool2 <- specpool(community_sngltons, habitat_sngltons$Region)
 pool2
 
-# chao, MF vs NF
-# t.test2(188.19048, 313.98718, 31.812022*sqrt(9), 47.707941*sqrt(15), 9, 15) # commNosr.100
-t.test2(pool2[5, 3], pool2[6, 3], pool2[5, 4]*sqrt(pool2[5, 10]), pool2[6, 4]*sqrt(pool2[6, 10]), pool2[5, 10], pool2[6, 10])
-# jack1, MF vs NF
-# t.test2(154.6667, 240.6667, 24.741628*sqrt(9), 30.652170*sqrt(15), 9, 15) # commNosr.100
-t.test2(pool1[5, 5], pool2[6, 5], pool2[5, 6]*sqrt(pool2[5, 10]), pool2[6, 6]*sqrt(pool2[6, 10]), pool2[5, 10], pool2[6, 10])
+# example pairwise comparison:  chao, Mianzhu vs Qionglai
+# t.test2(m1, m2, s1, s2, n1, n2, m0=0)
+# s1 and s2 are standard deviations, but specpool returns standard errors of the mean, which is sd/sqrt(n), so i need to multiply by sqrt(n) to get back sd
+t.test2(pool2[1, 2], pool2[2, 2], pool2[1, 3]*sqrt(pool2[1, 9]), pool2[2, 3]*sqrt(pool2[2, 9]), pool2[1, 9], pool2[2, 9])
 
 ```
 
-The more low-read-number OTUs are included in the dataset, the more that the species richness of NF > MF. This might imply that the diversity of NF is in the low biomass species or that, for some reason, NF has more OTU artefacts
 
+# calculate Shannon diversity instead of just species richness, mean for each Region
 ```{r shannon diversity}
-community_insecta %>% filter(habitat$Habitat == "MF") %>% diversity(index = "simpson") %>% mean()
-community_insecta %>% filter(habitat$Habitat == "NF") %>% diversity(index = "simpson") %>% mean()
+community_sngltons %>% dplyr::filter(habitat_sngltons$Region == "Mianzhu") %>% diversity(index = "shannon") %>% mean()
+community_sngltons %>% filter(habitat_sngltons$Region == "Qionglai") %>% diversity(index = "shannon") %>% mean()
+community_sngltons %>% filter(habitat_sngltons$Region == "Xiushuizhen") %>% diversity(index = "shannon") %>% mean()
 ```
+
+
+```{r iNEXT}
+# # vignette ("Introduction", package="iNEXT")
+# # http://chao.stat.nthu.edu.tw/wordpress/wp-content/uploads/software/iNEXT_UserGuide.pdf
+# # example for incidence based data 
+# data(ant)
+# str(ant)
+# t <- seq(1, 700, by=10)
+# out.inc <- iNEXT(ant, q=0, datatype="incidence_freq", size=t)
+# ggiNEXT(out.inc, type = 1)
+# out.inc$DataInfo
+
+community_sngltons_incidence <- community_sngltons
+community_sngltons_incidence[community_sngltons_incidence > 0] <- 1  # change all numbers > 0 to 1
+
+Mianzhu <- community_sngltons_incidence %>% dplyr::filter(habitat_sngltons$Region == "Mianzhu") 
+Qionglai <- community_sngltons_incidence %>% dplyr::filter(habitat_sngltons$Region == "Qionglai")
+Xiushuizhen <- community_sngltons_incidence %>% dplyr::filter(habitat_sngltons$Region == "Mianzhu") 
+
+cname <- c("Mianzhu", "Qionglai", "Xiushuizhen")
+
+comm4inext <- matrix(c(colSums(Mianzhu), colSums(Qionglai), colSums(Xiushuizhen)), ncol = 3)
+colnames(comm4inext) <- cname # add column names
+comm4inext <- rbind(c(nrow(Mianzhu), nrow(Qionglai), nrow(Xiushuizhen)), comm4inext) # add max number of sites for each column
+
+# the dataset structure:  each row is a species except for the first row.  each column is a sampled area (e.g. Mianzhu). the first row is the total number of sites that were sampled in each area (e.g. n = 8 sites sampled within Mianzhu region). The other rows are the species, and the number is the number of sites in which that species is found. For example, row 2, column 1 is the first species in Mianzhu, and it is found in 8 of the 8 sites. Note that all numbers under row 1 cannot be larger than the number in row 1
+
+
+confnum=0.95 # set confidence here
+outcomm0 <- iNEXT(comm4inext, q=0, conf=confnum, datatype="incidence_freq")
+ggiNEXT(outcomm0, type=1)  # Qionglai is slightly more species rich but appears not to be significantly different
+# Hill numbers:  0 = sp richness, 1 = Shannon, 2 = inverse Simpson
+outcomm0$DataInfo
+ChaoRichness(comm4inext, datatype="incidence_freq") # same as specpool results, so i trust that we have done this correctly. Compare to this line
+specpool(community_sngltons, habitat_sngltons$Region)
+
+# calculate Shannon diversity for each region
+ChaoShannon(comm4inext, datatype="incidence_freq")
+
+outcomm1 <- iNEXT(comm4inext, q=1, conf=confnum, datatype="incidence_freq")
+outcomm2 <- iNEXT(comm4inext, q=2, conf=confnum, datatype="incidence_freq")
+
+ggiNEXT(outcomm0, type=1) # sample-size-based rarefaction/extrapolation curve:  species richness
+ggiNEXT(outcomm1, type=1) # sample-size-based rarefaction/extrapolation curve:  Shannon
+ggiNEXT(outcomm2, type=1) # sample-size-based rarefaction/extrapolation curve:  Simpson
+
+ggiNEXT(outcomm0, type=2) # sample completeness curve
+ggiNEXT(outcomm0, type=3) # coverage-based rarefaction/extrapolation curve
+
+# outcomm0$DataInfo
+# outcomm0$iNextEst
+# outcomm0$AsyEst
+```
+
+
+#### Below this is code from a different dataset that i use as model code for more complex analyses.  you can ignore this stuff. 
+
+```{r boral, eval=FALSE}
+colnames(community_now) <- c(1:ncol(community_now)) # change colnames to a simple number
+community_now[community_now > 1] <-  1 # change to presence/absence
+
+# set up MCMC parameters 
+#mcmc.control <- list(n.burnin = 100, n.iteration = 1000, n.thin = 10)
+mcmc.control <- list(n.burnin = 10000, n.iteration = 40000, n.thin = 30)
+
+# Set up priors
+# Francis Hui suggests trying different priors to stabilise sampling for sparse matrices (such as we have).  This isn't as important as getting the mcmc.control parameters right
+set.prior <- list(type = c("normal","normal","normal","uniform"), hypparams = c(10, 10, 10, 30)) # boral default
+# set.prior <- list(type = c("normal","normal","normal","uniform"), hypparams = c(10, 10, 10, 30), ssvs.index = ssvsindex)  
+# type = c("cauchy","cauchy","cauchy","uniform"), hypparams = c(2.5^2, 2.5^2, 2.5^2, 30) # Gelman proposed this
+# type = c("normal","normal","normal","uniform"), hypparams = c(1, 1, 1, 30) ## People who developed the STAN package proposed this as one possibility. 
+
+# set up model
+comm.fit.b1 <- boral(community_now, family = "binomial", num.lv = 2, row.eff = "random", calc.ics = FALSE, mcmc.control = mcmc.control)
+summary(comm.fit.b1)
+par(mfrow = c(2,2))
+plot(comm.fit.b1) ## Plots used in residual analysis, 
+par(mfrow = c(1,1))
+lvsplot(comm.fit.b1, biplot = FALSE, jitter = TRUE, col = as.numeric(habitat_now$Region))
+```
+
+
+http://www.wcsmalaysia.org/analysis/Biod_richness.htm
 
 #### mvabund analysis
 
@@ -397,474 +417,4 @@ comm_NF_BB.ads <- adonis(community_now_NF_BB ~ habitat_now_NF_BB$Habitat, method
 comm_NF_BB.ads
 ```
 
-
-#### Breakaway analysis
-
-```{r breakaway}
-####################### alpha diversity: breakaway and vegan ##
-
-# ### XXXX use original otu table #
-# library("breakaway")
-# row.names(commNosr)
-# BB <- commNosr[1:10,]
-# CL <- commNosr[11:26,]
-# EC <- commNosr[27:34,]
-# JC <- commNosr[35:46,]
-# MF <- commNosr[47:55,]
-# NF <- commNosr[56:70,]
-# 
-# BB <- BB[,colSums(BB)>0] # keep those observed otu
-# CL <- CL[,colSums(CL)>0]
-# EC <- EC[,colSums(EC)>0]
-# JC <- JC[,colSums(JC)>0]
-# MF <- MF[,colSums(MF)>0]
-# NF <- NF[,colSums(NF)>0]
-# 
-# ### breakaway ##
-# BB.pa <- BB
-# BB.pa[BB.pa>1] <- 1
-# BB.fq <- matrix(c(colSums(BB.pa),colSums(BB)),ncol = 2)
-# BB.fqb <- matrix(c(colSums(BB.pa),colSums(BB.pa)),ncol = 2)
-# 
-# breakaway(BB.fq)
-# chao1(BB.fq)
-# chao1_bc(BB.fq)
-# chao_bunge(BB.fq)
-# wlrm_transformed(BB.fq)
-# wlrm_untransformed(BB.fq)
-# 
-# ###### vegan ###
-# library(vegan)
-# attach(habitat)
-# pool1 <- specpool(commNosr,Habitat)
-# pool1
-# #op <- par(mfrow = c(1,2))
-# boxplot(specnumber(commNosr)~Habitat)
-# boxplot(specnumber(commNosr)/specpool2vect(pool1)~Habitat)
-# poolaccum(commNosr)
-# estaccumR(commNosr)
-# 
-# ### XXXX use commNosr without single read ##
-# commNosr.NS <- commNosr
-# commNosr.NS[commNosr.NS==1] <- 0 # drop those single read cell
-# sum(commNosr) - sum(commNosr.NS)
-# 
-# BB.NS <- commNosr.NS[1:10,]
-# CL.NS <- commNosr.NS[11:26,]
-# EC.NS <- commNosr.NS[27:34,]
-# JC.NS <- commNosr.NS[35:46,]
-# MF.NS <- commNosr.NS[47:55,]
-# NF.NS <- commNosr.NS[56:70,]
-# # 
-# BB.NS <- BB.NS[,colSums(BB.NS)>0] 
-# CL.NS <- CL.NS[,colSums(CL.NS)>0]
-# EC.NS <- EC.NS[,colSums(EC.NS)>0]
-# JC.NS <- JC.NS[,colSums(JC.NS)>0]
-# MF.NS <- MF.NS[,colSums(MF.NS)>0]
-# NF.NS <- NF.NS[,colSums(NF.NS)>0]
-# 
-# ##
-# 
-# BB.NS.pa <- BB.NS
-# BB.NS.pa[BB.NS.pa>1] <- 1
-# BB.NS.fq <- matrix(c(colSums(BB.NS.pa),colSums(BB.NS)),ncol = 2)
-# BB.NS.fqb <- matrix(c(colSums(BB.NS.pa),colSums(BB.NS.pa)),ncol = 2)
-# 
-# breakaway(BB.NS.fq)
-# breakaway(BB.NS.fqb)
-# chao1(BB.NS.fq)
-# chao1_bc(BB.NS.fq)
-# chao_bunge(BB.NS.fq)
-# wlrm_transformed(BB.fq)
-# wlrm_untransformed(BB.NS.fq)
-# 
-# ###### vegan ###
-# #library(vegan)
-# #attach(habitat)
-# pool2 <- specpool(commNosr.NS,Habitat)
-# pool2
-# #op <- par(mfrow = c(1,1))
-# boxplot(specnumber(commNosr.NS)~Habitat)
-# boxplot(specnumber(commNosr.NS)/specpool2vect(pool2)~Habitat)
-# poolaccum(commNosr.NS)
-# estaccumR(commNosr.NS)
-# 
-# ### XXXX otu table with log2(reads number), those single read also dropped ##
-# library("breakaway")
-# commNosr.log <- commNosr
-# commNosr.log <- log2(commNosr.log[1:70,]+0.1) 
-# commNosr.log[commNosr.log<0] <- 0 
-# commNosr.log <- floor(commNosr.log[1:70,]) #
-# 
-# row.names(commNosr.log)
-# BB <- commNosr.log[1:10,]
-# CL <- commNosr.log[11:26,]
-# EC <- commNosr.log[27:34,]
-# JC <- commNosr.log[35:46,]
-# MF <- commNosr.log[47:55,]
-# NF <- commNosr.log[56:70,]
-# 
-# BB <- BB[,colSums(BB)>0] # keep those observed otu
-# CL <- CL[,colSums(CL)>0]
-# EC <- EC[,colSums(EC)>0]
-# JC <- JC[,colSums(JC)>0]
-# MF <- MF[,colSums(MF)>0]
-# NF <- NF[,colSums(NF)>0]
-# 
-# ### breakaway ##
-# BB.pa <- BB
-# BB.pa[BB.pa>1] <- 1
-# BB.fq <- matrix(c(colSums(BB.pa),colSums(BB)),ncol = 2)
-# BB.fqb <- matrix(c(colSums(BB.pa),colSums(BB.pa)),ncol = 2)
-# 
-# breakaway(BB.fq)
-# chao1(BB.fq)
-# chao1_bc(BB.fq)
-# chao_bunge(BB.fq)
-# wlrm_transformed(BB.fq)
-# wlrm_untransformed(BB.fq)
-# 
-# ###### vegan ###
-# library(vegan)
-# #attach(habitat)
-# pool1 <- specpool(commNosr.log,Habitat)
-# pool1
-# #op <- par(mfrow = c(1,2))
-# boxplot(specnumber(commNosr.log)~Habitat)
-# boxplot(specnumber(commNosr.log)/specpool2vect(pool1)~Habitat)
-# poolaccum(commNosr.log)
-# estaccumR(commNosr.log)
-# ##
-
-###### use binary otu table without single read  #######
-
-gfgMB <- read.table("./data/2libs_otu_WithTax4R_orig.txt", header = TRUE, na.strings = "NA")
-habitat <- select(gfgMB, Site:Weather)
-community <- select(gfgMB, starts_with("Cluster_"))
-
-# habitat <- gfgMB[, 1:5]
-# community <- gfgMB[,10:4973]
-commNosr <- community[, colSums(community) >= 50] ## change to this data 
-
-commNosrB <- commNosr
-commNosrB[commNosrB==1] <- 0 # drop those single read cell
-sum(commNosr) - sum(commNosrB)
-commNosrB[commNosrB>1] <- 1
-
-## as breakaway required, make a frequency table for each habitat
-habitat_now$Site
-# row.names(commNosrB)
-
-
-BB <- commNosrB[1:10,]
-CL <- commNosrB[11:26,]
-EC <- commNosrB[27:34,]
-JC <- commNosrB[35:46,]
-MF <- commNosrB[47:55,]
-NF <- commNosrB[56:70,]
-
-BB <- BB[,colSums(BB)>0] # keep those observed otu 
-CL <- CL[,colSums(CL)>0]
-EC <- EC[,colSums(EC)>0]
-JC <- JC[,colSums(JC)>0]
-MF <- MF[,colSums(MF)>0]
-NF <- NF[,colSums(NF)>0]
-
-####
-
-BB.pa <- BB
-BB.pa[BB.pa>1] <- 1
-BB.fq <- matrix(c(colSums(BB.pa),colSums(BB)),ncol = 2)
-BB.fqb <- matrix(c(colSums(BB.pa),colSums(BB.pa)),ncol = 2)
-
-
-breakaway(BB.fq)
-chao1(BB.fq)
-chao1_bc(BB.fq)
-chao_bunge(BB.fq)
-wlrm_transformed(BB.fq)
-wlrm_untransformed(BB.fq)
-
-###### vegan ###
-library(vegan)
-attach(habitat)
-pool1 <- specpool(commNosrB, habitat$Habitat)
-pool1
-#op <- par(mfrow = c(1,2))
-boxplot(specnumber(commNosrB)~Habitat)
-boxplot(specnumber(commNosrB)/specpool2vect(pool1)~Habitat)
-poolaccum(commNosrB)
-estaccumR(commNosrB)
-
-############## Boral #######
-##
-#mcmc.control <- list(n.burnin = 100, n.iteration = 1000, n.thin = 10)
-mcmc.control <- list(n.burnin = 300, n.iteration = 3000, n.thin = 30)
-colnames(commNosrB) <- c(1:520)
-comm.fit.p2 <- boral(commNosrB, family = "poisson", num.lv = 2, row.eff = "fixed", calc.ics = FALSE, mcmc.control = mcmc.control)
-summary(comm.fit.p3)
-par(mfrow = c(2,2))
-plot(comm.fit.p3) ## Plots used in residual analysis, 
-#dev.off()
-par(mfrow = c(1,1))
-lvsplot(comm.fit.p2, biplot = FALSE, jitter = TRUE)
-
-
-```
-
-```{r}
-comm.fit.p2d <- boral(community, family = "poisson", num.lv = 2, row.eff = "fixed", calc.ics = FALSE)
-summary(comm.fit.p2d)
-par(mfrow = c(2,2))
-plot(comm.fit.p2d) ## Plots used in residual analysis, 
-#dev.off()
-par(mfrow = c(1,1))
-lvsplot(comm.fit.p2d)
-
-comm.fit.p3d <- boral(commNosrB, family = "poisson", num.lv = 3, row.eff = "fixed", calc.ics = FALSE)
-summary(comm.fit.p3d)
-par(mfrow = c(2,2))
-plot(comm.fit.p3d) ## Plots used in residual analysis, 
-#dev.off()
-par(mfrow = c(1,1))
-lvsplot(comm.fit.p3d)
-
-#comm.fit.p4d <- boral(commNosrB, family = "poisson", num.lv = 4, #row.eff = "fixed", calc.ics = FALSE)
-#summary(comm.fit.p4d)
-#par(mfrow = c(2,2))
-#plot(comm.fit.p4d) ## Plots used in residual analysis, 
-##dev.off()
-#par(mfrow = c(1,1))
-#lvsplot(comm.fit.p4d)
-
-
-x <- habitat$Habitat
-commB.fit <- boral(commNosrB, X = x, family = "poisson", num.lv = 0, mcmc.control = mcmc.control) # boral fit failed...
-
-#####
-vegemite(commNosrB)
-tabasco(commNosrB)
-x0 <- colSums(commNosrB[1:10,])
-x1 <- colSums(commNosrB[11:26,])
-x2 <- colSums(commNosrB[27:34,])
-x3 <- colSums(commNosrB[35:46,])
-x4 <- colSums(commNosrB[47:55,])
-x5 <- colSums(commNosrB[56:70,])
-
-habSum <- matrix(c(x0,x1,x2,x3,x4,x5),ncol = 520)
-colnames(habSum)
-rownames(habSum)
-row <- c("BB","CL","EC","JC","MF","NF")
-col <- c(1:520)
-dimnames(habSum) <- list(row,col)
-
-vegemite(habSum,scale = "Hill")
-tabasco(habSum)
-
-habSum1 <- matrix(c(x0,x2,x3,x4,x5),ncol = 520)
-row <- c("BB","EC","JC","MF","NF")
-col <- c(1:520)
-dimnames(habSum1) <- list(row,col)
-
-habSum1 <- habSum1[,colSums(habSum1)]
-
-vegemite(habSum1,scale = "Hill")
-tabasco(habSum1)
-
-
-
-#c,ommBT <- t(commNosrB)
-#row.names(commBT)
-#x <- rowSums(commBT[,1:10])
-#x1 <- rowSums(commBT[,11:26])
-#x2 <- rowSums(commBT[,27:34])
-#x3 <- rowSums(commBT[,35:46])
-#x4 <- rowSums(commBT[,47:55])
-#x5 <- rowSums(commBT[,56:70])
-#
-#a <- matrix(c(x,x1,x2,x3,x4,x5),ncol = 6)
-#
-#vegemite(a)
-#tabasco(a)
-
-###### ####
-
-```
-
-```{r } 
-######### get original data and do filter
-gfgMB <- read.table("data/2libs_otu_WithTax4R.txt",header=TRUE, sep="\t", row.names=1, na.strings="NA", dec=".", strip.white=TRUE) #this otu table without taxon-info
-row.names(gfgMB)
-#colnames(gfgMB)
-habitat <- gfgMB[1:70,1:4]
-community <- gfgMB[1:70,5:4968]
-taxinfo <- gfgMB[71:77,5:4968]
-
-write.csv(community,'SCMBC_otu.csv')
-community <- read.csv('SCMBC_otu.csv',row.names=1, header=T)
-commNosr <- community[,colSums(community)>=50]
-colnames(commNosr)
-
-Tax <- taxinfo[,c(colnames(commNosr))]
-Tax <- t(Tax)
-#comTax <- 
-
-
-######### alpha diversity  ############
-## by specpool
-library(vegan)
-commNosrB <- commNosr
-commNosrB[commNosrB<3] <- 0 # according before results and field work experience, JC forest seems get more alpha diversity. so drop those single read and double reads cell
-commNosrB[commNosrB>1] <- 1
-
-attach(habitat)
-pool1 <- specpool(commNosrB,Habitat)
-pool1 ## seems better
-#	Species	chao	chao.se	jack1	jack1.se	jack2	boot	boot.se	n
-#BB	80	196.4462	45.76738	132.2000	20.30714	169.3556	101.70195	9.500782	10
-#CL	180	316.4667	39.00446	269.0625	29.35338	326.8708	218.43714	14.985708	16
-#EC	62	110.5962	21.88252	95.2500	15.68738	115.3929	76.53721	8.226332	8
-#JC	90	225.5256	52.28162	146.8333	22.26576	188.6515	113.59180	10.595451	12
-#MF	118	368.6944	82.61292	202.4444	33.71046	265.4444	152.69311	14.433310	9
-#NF	195	457.2968	67.57570	318.2000	42.14641	407.6524	246.30169	20.212816	15
-
-####  try breakaway ###
-BB <- commNosrB[1:10,]
-CL <- commNosrB[11:26,]
-EC <- commNosrB[27:34,]
-JC <- commNosrB[35:46,]
-MF <- commNosrB[47:55,]
-NF <- commNosrB[56:70,]
-
-BB <- BB[,colSums(BB)>0] # keep those observed otu 
-CL <- CL[,colSums(CL)>0]
-EC <- EC[,colSums(EC)>0]
-JC <- JC[,colSums(JC)>0]
-MF <- MF[,colSums(MF)>0]
-NF <- NF[,colSums(NF)>0]
-
-BB.fq <- matrix(c(colSums(BB),colSums(BB)),ncol = 2)
-#BB.fq <- BB.fq[sort(BB.fq[1,]),]
-BB.fq <- BB.fq[order(rowSums(BB.fq)),]
-BB.fq.ns <- BB.fq[rowSums(BB.fq)>2,]
-
-library("breakaway")
-breakaway(BB.fq)
-chao1(BB.fq)
-chao1_bc(BB.fq)
-chao_bunge(BB.fq)
-wlrm_transformed(BB.fq)
-wlrm_untransformed(BB.fq)
-breakaway_nof1(BB.fq.ns)
-#
-CL.fq <- matrix(c(colSums(CL),colSums(CL)),ncol = 2)
-CL.fq <- CL.fq[order(rowSums(CL.fq)),]
-CL.fq.ns <- CL.fq[rowSums(CL.fq)>2,]
-#CL.fq.ns
-breakaway(CL.fq)
-breakaway_nof1(CL.fq.ns)
-#
-EC.fq <- matrix(c(colSums(EC),colSums(EC)),ncol = 2)
-EC.fq <- EC.fq[order(rowSums(EC.fq)),]
-EC.fq.ns <- EC.fq[rowSums(EC.fq)>2,]
-breakaway(EC.fq)
-breakaway_nof1(EC.fq.ns)
-#
-JC.fq <- matrix(c(colSums(JC),colSums(JC)),ncol = 2)
-JC.fq <- JC.fq[order(rowSums(JC.fq)),]
-JC.fq.ns <- JC.fq[rowSums(JC.fq)>2,]
-breakaway(JC.fq)
-breakaway_nof1(JC.fq.ns)
-#
-MF.fq <- matrix(c(colSums(MF),colSums(MF)),ncol = 2)
-MF.fq <- MF.fq[order(rowSums(MF.fq)),]
-MF.fq.ns <- MF.fq[rowSums(MF.fq)>2,]
-breakaway(MF.fq)
-breakaway_nof1(MF.fq.ns)
-#
-NF.fq <- matrix(c(colSums(NF),colSums(NF)),ncol = 2)
-NF.fq <- NF.fq[order(rowSums(NF.fq)),]
-NF.fq.ns <- NF.fq[rowSums(NF.fq)>2,]
-breakaway(NF.fq)
-breakaway_nof1(NF.fq.ns)
-
-
-### original data without singletons and doubletons: alpha diversity
-# by specpool
-library(vegan)
-commNosrN <- commNosr
-commNosrN[commNosrN<3] <- 0 # according before results and field work experience, JC forest seems get more alpha diversity. so drop those single read and double reads cell
-#commNosrB[commNosrB>1] <- 1
-
-attach(habitat)
-pool2 <- specpool(commNosrN,Habitat)
-pool2 ## seems better
-
-### try breakaway ##
-BBN <- commNosrN[1:10,]
-CLN <- commNosrN[11:26,]
-ECN <- commNosrN[27:34,]
-JCN <- commNosrN[35:46,]
-MFN <- commNosrN[47:55,]
-NFN <- commNosrN[56:70,]
-
-BBN <- BBN[,colSums(BBN)>0] # keep those observed otu 
-CLN <- CLN[,colSums(CLN)>0]
-ECN <- ECN[,colSums(ECN)>0]
-JCN <- JCN[,colSums(JCN)>0]
-MFN <- MFN[,colSums(MFN)>0]
-NFN <- NFN[,colSums(NFN)>0]
-
-BBN.pa <- BBN
-BBN.pa[BBN.pa>1] <- 1
-BBN.fq <- matrix(c(colSums(BBN.pa),colSums(BBN)),ncol = 2)
-
-#BB.fq <- matrix(c(colSums(BB),colSums(BB)),ncol = 2)
-#BB.fq <- BB.fq[sort(BB.fq[1,]),]
-BBN.fq <- BBN.fq[order(rowSums(BBN.fq)),]
-BBN.fq.ns <- BBN.fq[BBN.fq>1]
-
-
-library("breakaway")
-breakaway(BBN.fq)
-#
-
-
-########### phylocurve
-install.packages("phylocurve")
-install.packages("betapart")
-
-
-###### beta diversity ######
-### PCA 
-install.packages("SparseM") ## need by library 'car'
-library(foreign)
-library(vegan)
-library(car)
-commNosrB <- commNosr
-commNosrB[commNosrB<3] <- 0 # according before results and field work experience, JC forest seems get more alpha diversity. so drop those single read and double reads cell
-commNosrB[commNosrB>1] <- 1
-
-hab <- habitat[,2:4]
-comm.pca <- rda(commNosrB)
-comm.pca <- rda(commNosrB~Habitat,habitat)
-comm.pca <- rda(commNosrB~Habitat*Altitude*Weather,habitat)
-summary(comm.pca)
-plot(comm.pca)
-
-
-
-#rowSums(commNosrB) # JC04 has no otu
-
-
-#### boral
-library("boral")
-library(mvabund)
-
-
-
-# #######
-
-
-```
 
