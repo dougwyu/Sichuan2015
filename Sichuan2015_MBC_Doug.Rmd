@@ -19,8 +19,8 @@ sessionInfo()
 ```
 
 ```{r load and format data}
-inputfile <- "Sichuan2015_OTU_LerayCOI_DAMe_min1PCR_min20copies_sumaclust97.txt"
-habitatinput <- "habitat.txt"
+inputfile <- "data/Sichuan2015_OTU_LerayCOI_DAMe_min1PCR_min20copies_sumaclust97.txt"
+habitatinput <- "data/habitat.txt"
 
 # help(read_tsv)
 # command from readr package, and you tell the command how to format the columns
